@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zellij_tile::prelude::*;
 
-// const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]])(?::\d+(?::\d+)?)?)(?::|\.|\s|$)"#;
-const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)(?::\d+(?::\d+)?)?)(?::|\s|$)"#;
+const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]])(?::\d+(?::\d+)?)?)(?::|\.|\s|$)"#;
+// const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)(?::\d+(?::\d+)?)?)(?::|\s|$)"#;
 
 
 const CWD_CONTEXT_KEY: &str = "cwd";
@@ -35,7 +35,9 @@ impl ZellijPlugin for State {
         request_permission(&[PermissionType::ReadApplicationState,
             PermissionType::FullHdAccess,
             PermissionType::ChangeApplicationState,
-            PermissionType::ReadSessionEnvironmentVariables
+            PermissionType::ReadSessionEnvironmentVariables,
+            PermissionType::OpenFiles,
+            PermissionType::MessageAndLaunchOtherPlugins
         ]);
         eprintln!("2");
         eprintln!("3");
@@ -219,8 +221,9 @@ impl State {
         if let Some(entries) = self.pane_dir_entries.get(&pane_id) {
             for entry_name in entries {
                 let path_chars = r#"[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]"#;
+                let path_chars_end = r#"[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]"#;
                 let pattern = format!(
-                    "(?:^|\\s)({}(?:/{path_chars}+)?(?::\\d+(?::\\d+)?)?)(?::|\\s|$)",
+                    "(?:^|\\s)({}(?:/{path_chars}*{path_chars_end})?(?::\\d+(?::\\d+)?)?)(?::|\\.|\\s|$)",
                     regex_escape(entry_name),
                 );
                 highlights.push(RegexHighlight {
@@ -238,7 +241,6 @@ impl State {
         }
 
         set_pane_regex_highlights(pane_id, highlights);
-        eprintln!("HIGHLIGHTS HAVE BEEN SET UP !!!!");
     }
 
     fn scan_and_store_dir_entries(&mut self, pane_id: PaneId, cwd: &Path) {
