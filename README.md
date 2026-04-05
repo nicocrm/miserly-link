@@ -1,27 +1,39 @@
-## About
+# miserly-link
 
-This is an example [Zellij][zellij] plugin in Rust. It can be used as a template to start developing your own plugins.
+Custom version of the default Zellij [link plugin](https://github.com/zellij-org/zellij/tree/main/default-plugins/link) that handles trailing periods gracefully.
 
-More about Zellij plugins: [Zellij Documentation][docs]
+## Why?
 
-[zellij]: https://github.com/zellij-org/zellij
-[docs]: https://zellij.dev/documentation/plugins.html
+The default link plugin's file path regex will include a trailing `.` as part of the captured path. So if terminal output contains something like:
 
-## Development
+```
+See ./src/main.rs.
+```
 
-*Note*: you will need to have `wasm32-wasi` added to rust as a target to build the plugin. This can be done with `rustup target add wasm32-wasi`.
+The default plugin captures `./src/main.rs.` (including the period), which fails to resolve.
 
-### With the Provided Layout
+This plugin tweaks the regex so that a trailing period is excluded from the capture, correctly resolving `./src/main.rs`.
 
-![img-2024-11-14-100111](https://github.com/user-attachments/assets/e3bae15c-1f94-4d4a-acea-a036f8afdf67)
+## Changes from default
 
+- File path regex requires the last character to be a non-dot path character (`[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]`)
+- `.` is added to the trailing boundary pattern
+- Same fix applied to directory-entry highlight patterns
+- Permissions are explicitly requested at load time (rather than relying on auto-grant)
 
-Run `zellij -l zellij.kdl` at the root of this repository. This will open a development environment that will help you develop the plugin inside Zellij.
+## Build and install
 
-It can also be used if you prefer developing outside of the terminal - in this case you should ignore the `$EDITOR` pane and use your IDE instead.
+```
+cargo build --target wasm32-wasip1 --release
+mkdir ~/.config/zellij/plugins
+cp target/wasm32-wasip1/release/miserly-link.wasm ~/.config/zellij/plugins
+```
 
-### Otherwise
+Then edit config.kdl to load it instead of file:link:
 
-1. Build the project: `cargo build`
-2. Load it inside a running Zellij session: `zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/rust-plugin-example.wasm`
-3. Repeat on changes (perhaps with a `watchexec` or similar command to run on fs changes).
+```
+load_plugins {
+    // "zellij:link"
+    "file:~/.config/zellij/plugins/miserly-link.wasm"
+}
+```
