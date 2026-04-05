@@ -1,7 +1,7 @@
 [package]
-name = "rust-plugin-example"
+name = "miserly-link"
 version = "0.1.0"
-authors = ["Aram Drevekenin <aram@poor.dev>"]
+authors = ["Nicolas Galler <nic@f1code.com>"]
 edition = "2018"
 
 [dependencies]
