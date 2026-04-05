@@ -20,33 +20,16 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.94.1'
-          profile: minimal
-          override: true
-          target: wasm32-wasip1
+          targets: wasm32-wasip1
 
       - name: Build release binary
         run: cargo build --release
 
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
-          release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
           draft: true
-          prerelease: false
-
-      - name: Upload wasm file to release
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./target/wasm32-wasip1/release/miserly-link.wasm
-          asset_name: miserly-link.wasm
-          asset_content_type: application/octet-stream
+          files: ./target/wasm32-wasip1/release/miserly-link.wasm
