@@ -31,6 +31,7 @@ impl ZellijPlugin for State {
         //     EventType::HighlightClicked,
         //     EventType::CwdChanged,
         // ]);
+        subscribe(&[EventType::PermissionRequestResult]);
         request_permission(&[PermissionType::ReadApplicationState,
             PermissionType::FullHdAccess,
             PermissionType::ChangeApplicationState,
