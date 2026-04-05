@@ -24,7 +24,7 @@ This plugin tweaks the regex so that a trailing period is excluded from the capt
 ## Build and install
 
 ```
-cargo build --target wasm32-wasip1 --release
+cargo build --release
 mkdir ~/.config/zellij/plugins
 cp target/wasm32-wasip1/release/miserly-link.wasm ~/.config/zellij/plugins
 ```

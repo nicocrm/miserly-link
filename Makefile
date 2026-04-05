@@ -4,7 +4,7 @@ TARGET := target/wasm32-wasip1/release/miserly-link.wasm
 .PHONY: build install
 
 build:
-	cargo build --target wasm32-wasip1 --release
+	cargo build --release
 
 install: build
 	mkdir -p $(PLUGIN_DIR)
