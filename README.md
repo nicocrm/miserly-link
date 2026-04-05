@@ -37,3 +37,7 @@ load_plugins {
     "file:~/.config/zellij/plugins/miserly-link.wasm"
 }
 ```
+
+## Credit
+
+This code is 99.9% from the default link plugin from [Zellij](https://github.com/zellij-org/zellij) and 0.1% Claude code generated so I take credit for nothing :)
