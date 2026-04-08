@@ -14,6 +14,15 @@ The default plugin captures `./src/main.rs.` (including the period), which fails
 
 This plugin tweaks the regex so that a trailing period is excluded from the capture, correctly resolving `./src/main.rs`.
 
+In addition to a trailing period, the modified plugin ignores a few other uncommon characters at the end of file
+names: commas, colon, exclamation point.
+
+It will also open ALL files using the default editor, rather than trying to use the file picker for directories: the
+reason is that Vim can handle directory browsing just fine.
+
+Finally, it doesn't check if the file exists before opening the editor: this allows using the alt-click function to
+**create** a file, not just to edit it.
+
 ## Changes from default
 
 - File path regex requires the last character to be a non-dot path character (`[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]`)
