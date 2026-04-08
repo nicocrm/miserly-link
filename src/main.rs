@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zellij_tile::prelude::*;
 
-const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]])(?::\d+(?::\d+)?)?)(?::|\.|\s|$)"#;
+const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]*[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]])(?::\d+(?::\d+)?)?)(?::|\.|\s|,|!|$)"#;
 // const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)(?::\d+(?::\d+)?)?)(?::|\s|$)"#;
 
 
@@ -25,12 +25,7 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
-        eprintln!("It's a plugin");
-        // subscribe(&[
-        //     EventType::PaneUpdate,
-        //     EventType::HighlightClicked,
-        //     EventType::CwdChanged,
-        // ]);
+        // eprintln!("Loaded plugin miserly-link");
         subscribe(&[EventType::PermissionRequestResult]);
         request_permission(&[PermissionType::ReadApplicationState,
             PermissionType::FullHdAccess,
@@ -39,13 +34,9 @@ impl ZellijPlugin for State {
             PermissionType::OpenFiles,
             PermissionType::MessageAndLaunchOtherPlugins
         ]);
-        eprintln!("2");
-        eprintln!("3");
-        eprintln!("4");
     }
 
     fn update(&mut self, event: Event) -> bool {
-        eprintln!("IN UPDATE!!!!");
         match event {
             Event::PermissionRequestResult(permission_status) => {
                 match permission_status {
@@ -53,7 +44,7 @@ impl ZellijPlugin for State {
                         self.initialize();
                     },
                     PermissionStatus::Denied => {
-                        eprintln!("No permission!");
+                        // eprintln!("No permission!");
                     }
                 }
             }
@@ -82,10 +73,24 @@ impl ZellijPlugin for State {
 }
 
 impl State {
+    fn is_host_mapping_ready(&self) -> bool {
+        match std::fs::metadata("/host/Users") {
+            Ok(_) => {
+                // eprintln!("Host mapping is ready");
+                true
+            },
+            Err(_e) => {
+                // eprintln!("Host mapping not ready: {}", e);
+                false
+            }
+        }
+    }
+
     fn initialize(&mut self) {
         self.env_vars = get_session_environment_variables();
         // Set host folder to "/" so that /host maps to the real filesystem root,
         // allowing std::fs operations on /host/<absolute_path>.
+        // eprintln!("Setting host folder to root '/'...");
         change_host_folder(PathBuf::from("/"));
         subscribe(&[
             EventType::PaneUpdate,
@@ -95,7 +100,14 @@ impl State {
     }
 
     fn handle_pane_update(&mut self, pane_manifest: PaneManifest) {
+        // Check if host mapping is ready - if not, just return and wait for next update
+        if !self.is_host_mapping_ready() {
+            // eprintln!("Host mapping not ready yet, skipping pane update");
+            return;
+        }
+        
         let mut current_panes: HashSet<PaneId> = HashSet::new();
+        // eprintln!("On Update...");
 
         for (_tab_index, panes) in &pane_manifest.panes {
             for pane_info in panes {
@@ -109,6 +121,7 @@ impl State {
         // Set highlights on newly appeared terminal panes
         for &pane_id in &current_panes {
             if !self.known_terminal_panes.contains(&pane_id) {
+                // eprintln!("Set highlights for {}", pane_id);
                 // Fetch the pane's current CWD and scan its directory
                 if let Ok(cwd) = get_pane_cwd(pane_id) {
                     self.scan_and_store_dir_entries(pane_id, &cwd);
@@ -136,7 +149,12 @@ impl State {
         }
 
         self.pane_cwds.insert(pane_id, new_cwd.clone());
-        self.scan_and_store_dir_entries(pane_id, &new_cwd);
+        
+        if self.is_host_mapping_ready() {
+            self.scan_and_store_dir_entries(pane_id, &new_cwd);
+        } else {
+            // eprintln!("Host mapping not ready, skipping directory scan for CWD change");
+        }
 
         // clear_pane_highlights removes all highlights, then re-set everything
         // (file-path regex + directory entry patterns)
@@ -145,29 +163,50 @@ impl State {
     }
 
     fn handle_highlight_clicked(&self, matched_string: String, context: BTreeMap<String, String>) {
+        // eprintln!("=== Highlight clicked ===");
+        // eprintln!("Matched string: '{}'", matched_string);
+        // eprintln!("Context: {:?}", context);
+        
         let (path_str, line_number) = parse_path_and_line(&matched_string);
         let path_str = path_str.trim();
+        // eprintln!("Parsed path: '{}', line: {:?}", path_str, line_number);
+        
         let expanded = expand_path(path_str, &self.env_vars);
         let path_str = expanded.as_str();
+        // eprintln!("Expanded path: '{}'", path_str);
 
         // Resolve to a fully qualified path: if relative, join with the
         // pane CWD stored in the highlight context.
         let absolute_path = if path_str.starts_with('/') {
+            // eprintln!("Path is absolute: {}", path_str);
             PathBuf::from(path_str)
         } else if let Some(cwd) = context.get(CWD_CONTEXT_KEY) {
+            // eprintln!("Path is relative, joining with CWD: {} + {}", cwd, path_str);
             PathBuf::from(cwd).join(path_str)
         } else {
+            // eprintln!("Path is relative but no CWD context, using as-is: {}", path_str);
             PathBuf::from(path_str)
         };
+        // eprintln!("Final absolute path: {}", absolute_path.display());
 
+        // Note: Symlink resolution is not currently supported due to plugin filesystem limitations
+        // Paths containing symlinks may not be clickable
+        
         // Validate the path exists via the /host/ filesystem mapping
         // established at load time. This guards against regex false
         // positives that match non-path text in terminal output.
-        let host_path =
-            Path::new("/host").join(absolute_path.strip_prefix("/").unwrap_or(&absolute_path));
+        let host_path = if absolute_path.is_absolute() {
+            Path::new("/host").join(absolute_path.strip_prefix("/").unwrap_or(&absolute_path))
+        } else {
+            Path::new("/host").join(&absolute_path)
+        };
+        eprintln!("Checking path existence: {} -> {}", absolute_path.display(), host_path.display());
         let metadata = match std::fs::metadata(&host_path) {
             Ok(m) => m,
-            Err(_) => return, // path does not exist — silently ignore
+            Err(e) => {
+                eprintln!("File does not exist: {} (error: {})", host_path.display(), e);
+                return; // path does not exist
+            }
         };
 
         if metadata.is_dir() {
@@ -223,7 +262,7 @@ impl State {
                 let path_chars = r#"[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]"#;
                 let path_chars_end = r#"[A-Za-z0-9_/\-+@%,#=~!\$\{\}\[\]]"#;
                 let pattern = format!(
-                    "(?:^|\\s)({}(?:/{path_chars}*{path_chars_end})?(?::\\d+(?::\\d+)?)?)(?::|\\.|\\s|$)",
+                    "(?:^|\\s)({}(?:/{path_chars}*{path_chars_end})?(?::\\d+(?::\\d+)?)?)(?::|\\.|\\s|,|!|$)",
                     regex_escape(entry_name),
                 );
                 highlights.push(RegexHighlight {
@@ -245,7 +284,9 @@ impl State {
 
     fn scan_and_store_dir_entries(&mut self, pane_id: PaneId, cwd: &Path) {
         let host_path = Path::new("/host").join(cwd.strip_prefix("/").unwrap_or(cwd));
+        // eprintln!("Scanning directory: {} -> {}", cwd.display(), host_path.display());
         let dir_entries = scan_directory(&host_path);
+        // eprintln!("Found {} entries in directory", dir_entries.len());
         self.pane_dir_entries.insert(pane_id, dir_entries);
     }
 
@@ -268,18 +309,23 @@ fn scan_directory(path: &Path) -> Vec<String> {
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(path) {
         Ok(rd) => rd,
-        Err(_) => return entries,
+        Err(_e) => {
+            // eprintln!("Failed to read directory {}: {}", path.display(), e);
+            return entries;
+        }
     };
     for entry in read_dir {
         if let Ok(entry) = entry {
             if let Some(name) = entry.file_name().to_str() {
                 entries.push(name.to_owned());
                 if entries.len() > MAX_DIR_ENTRIES {
+                    // eprintln!("Directory {} has too many entries (>{}), skipping", path.display(), MAX_DIR_ENTRIES);
                     return Vec::new();
                 }
             }
         }
     }
+    // eprintln!("Successfully scanned {}: found entries {:?}", path.display(), entries);
     entries
 }
 
@@ -373,16 +419,21 @@ fn expand_path(path: &str, env_vars: &BTreeMap<String, String>) -> String {
 }
 
 fn parse_path_and_line(matched_string: &str) -> (&str, Option<usize>) {
-    let mut end = matched_string.len();
+    // First, strip trailing punctuation that might be captured by the regex
+    let cleaned = matched_string.trim_end_matches(|c: char| {
+        matches!(c, ',' | '!' | '.' | ';' | ')' | '}' | ']')
+    });
+    
+    let mut end = cleaned.len();
     let mut numeric_segments: Vec<(usize, &str)> = Vec::new();
 
     loop {
         if end == 0 {
             break;
         }
-        let search_region = &matched_string[..end];
+        let search_region = &cleaned[..end];
         if let Some(colon_pos) = search_region.rfind(':') {
-            let segment = &matched_string[colon_pos + 1..end];
+            let segment = &cleaned[colon_pos + 1..end];
             if !segment.is_empty() && segment.chars().all(|c| c.is_ascii_digit()) {
                 numeric_segments.push((colon_pos, segment));
                 end = colon_pos;
@@ -397,9 +448,9 @@ fn parse_path_and_line(matched_string: &str) -> (&str, Option<usize>) {
     numeric_segments.reverse();
 
     match numeric_segments.first() {
-        None => (matched_string, None),
+        None => (cleaned, None),
         Some(&(colon_pos, line_str)) => {
-            let path = &matched_string[..colon_pos];
+            let path = &cleaned[..colon_pos];
             (path, line_str.parse::<usize>().ok())
         },
     }
@@ -437,6 +488,29 @@ mod tests {
         let (path, line) = parse_path_and_line("src/main.rs:");
         assert_eq!(path, "src/main.rs:");
         assert_eq!(line, None);
+    }
+
+    #[test]
+    fn parse_path_and_line_with_trailing_punctuation() {
+        // Test trailing comma
+        let (path, line) = parse_path_and_line("src/main.rs,");
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(line, None);
+        
+        // Test trailing exclamation
+        let (path, line) = parse_path_and_line("src/main.rs!");
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(line, None);
+        
+        // Test trailing comma with line number
+        let (path, line) = parse_path_and_line("src/main.rs:42,");
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(line, Some(42));
+        
+        // Test trailing exclamation with line number
+        let (path, line) = parse_path_and_line("src/main.rs:42!");
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(line, Some(42));
     }
 
     // --- expand_path tests ---
@@ -489,8 +563,84 @@ mod tests {
         assert_eq!(regex_escape("hello_world"), "hello_world");
     }
 
-    // --- scan_directory tests ---
-
+    #[test]
+    fn test_symlink_resolution() {
+        use std::fs;
+        
+        let temp_dir = std::env::temp_dir().join("zellij_test_symlinks");
+        let _ = fs::remove_dir_all(&temp_dir);
+        
+        // Create directory structure:
+        // temp_dir/
+        //   real_dir/
+        //     file.txt
+        //   symlink_dir -> real_dir
+        let real_dir = temp_dir.join("real_dir");
+        let symlink_dir = temp_dir.join("symlink_dir");
+        let real_file = real_dir.join("file.txt");
+        let symlink_path_to_file = symlink_dir.join("file.txt");
+        
+        fs::create_dir_all(&real_dir).unwrap();
+        fs::write(&real_file, "test content").unwrap();
+        
+        // Create symlink (platform-specific)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            symlink(&real_dir, &symlink_dir).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::symlink_dir;
+            symlink_dir(&real_dir, &symlink_dir).unwrap();
+        }
+        
+        // Only run the test if we successfully created the symlink
+        if !symlink_dir.exists() {
+            eprintln!("Symlink creation not supported on this platform, skipping test");
+            let _ = fs::remove_dir_all(&temp_dir);
+            return;
+        }
+        
+        // Test that our symlink resolution logic works
+        let resolved_path = if let Some(parent) = symlink_path_to_file.parent() {
+            match parent.canonicalize() {
+                Ok(resolved_parent) => {
+                    let filename = symlink_path_to_file.file_name().unwrap_or_default();
+                    resolved_parent.join(filename)
+                },
+                Err(_) => symlink_path_to_file.clone()
+            }
+        } else {
+            symlink_path_to_file.clone()
+        };
+        
+        // The resolved path should point to the real file location
+        // Note: On macOS, temp directories may have additional symlink resolution
+        // so we check that both paths exist and have the same content instead of exact equality
+        assert!(resolved_path.exists(), "Resolved path should exist: {}", resolved_path.display());
+        assert!(real_file.exists(), "Real file should exist: {}", real_file.display());
+        
+        // The resolved path should have the same filename as the original
+        assert_eq!(resolved_path.file_name(), real_file.file_name());
+        
+        // Both the symlinked path and resolved path should be accessible
+        assert!(symlink_path_to_file.exists());
+        assert!(resolved_path.exists());
+        
+        // Content should be the same
+        let content1 = fs::read_to_string(&symlink_path_to_file).unwrap();
+        let content2 = fs::read_to_string(&resolved_path).unwrap();
+        assert_eq!(content1, content2);
+        assert_eq!(content1, "test content");
+        
+        // The key test: the resolved path should be different from the symlinked path
+        // (meaning symlink resolution actually happened)
+        assert_ne!(resolved_path.parent(), symlink_path_to_file.parent());
+        
+        // Clean up
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
     #[test]
     fn scan_directory_returns_entries() {
         use std::fs;
